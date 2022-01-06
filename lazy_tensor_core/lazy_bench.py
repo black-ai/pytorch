@@ -664,6 +664,7 @@ if __name__ == "__main__" :
 
         exit(0)
 
+    import psutil
     import subprocess
     import tempfile
     dirpath = tempfile.mkdtemp()
@@ -675,15 +676,19 @@ if __name__ == "__main__" :
         launch_command = f"python {' '.join(copy_argv)} --run_in_subprocess '{model_name}' --output_dir={dirpath}"
         env = os.environ
         env["LTC_TS_CUDA"] = "1"
-        try:
-            rc = subprocess.run(launch_command,
+        proc = subprocess.Popen(launch_command,
                         env=env,
-                        timeout = args.timeout,
                         shell=True,
                         stderr=subprocess.STDOUT)
+        try:
+            outs, errs = proc.communicate(timeout=args.timeout)
         except subprocess.TimeoutExpired:
             print(f"{model_name} timed out after {args.timeout // 60} minutes! Include it in SKIP or SKIP_TRAIN_ONLY")
             save_error(model_name, args.test, "Timed out.", dirpath)
+            process = psutil.Process(proc.pid)
+            for p in process.children(recursive=True):
+                p.kill()
+            process.kill()
 
     merge_with_prefix("lazy-overheads_", dirpath, args.output_dir, ("dev", "name", "test", "overhead", "pvalue"))
     merge_with_prefix("lazy-compute_", dirpath, args.output_dir, ("name", "dev", "experiment", "test", "speedup", "pvalue"))
